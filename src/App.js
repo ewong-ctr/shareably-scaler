@@ -9,17 +9,23 @@ const SHAREABLY_API_SERVER_URL = 'http://api.shareably.net:3030';
 const SPEND_KEY = 'spend';
 const REVENUE_KEY = 'revenue';
 const IMPRESSIONS_KEY = 'impressions';
+const ALL_KEYS = config.metrics.concat(['ROAS', 'PPI']);
 
 
 class DataRow extends Component {
   render() {
     const adData = this.props.adData;
+    const dataKeys = this.props.dataKeys;
+
+    const rowData = [];
+    dataKeys.forEach((key) => {
+      rowData.push(<td>{adData[key]}</td>);
+    });
 
     return (
       <tr>
         <td>{this.props.date}</td>
-        <td>{adData.revenue}</td>
-        <td>{adData.spend}</td>
+        {rowData}
       </tr>
     );
   }
@@ -27,14 +33,23 @@ class DataRow extends Component {
 
 class DataTable extends Component {
   render() {
+    const headers = [];
     const rows = [];
     const adData = this.props.adData;
+    const dataKeys = this.props.dataKeys;
+
+    dataKeys.forEach((k) => {
+      headers.push(
+        <th>{k}</th>
+      );
+    });
 
     Object.keys(adData).forEach((date) => {
       rows.push(
         <DataRow
           adData={adData[date]} 
-          date={date} />
+          date={date}
+          dataKeys={dataKeys} />
       );
     });
 
@@ -44,8 +59,7 @@ class DataTable extends Component {
           <thead>
             <tr>
               <th>Date</th>
-              <th>Revenue</th>
-              <th>Spend</th>
+              {headers}
             </tr>
           </thead>
           <tbody>{rows}</tbody>
@@ -107,7 +121,6 @@ class App extends Component {
 
 
   render() {
-
     let dataObj = this.state.adData;
     if (Object.keys(dataObj).length > 0) {
       return (
@@ -119,42 +132,16 @@ class App extends Component {
           {Object.keys(dataObj).map((adId) => {
             return (
               <div>
-                {adId}
-                <DataTable adData={dataObj[adId]} />
+                {adId} - Current Budget={this.state.adBudgets[adId]}
+                <DataTable 
+                  adData={dataObj[adId]} 
+                  dataKeys={ALL_KEYS} />
               </div>
             );
           })}
           </div>
         </div>
       );
-
-      /*
-      dataObj = this.state.adData['2019-01-25'];
-
-      return (
-        <div className="App">
-          <header className="App-header">
-          Erin's Shareably Data Analyzer
-          </header>
-          Mah Data
-          <table>
-          <tbody>
-          {dataObj.map((item,key) => {
-              return (
-                <tr key={key}>
-                  <td>{item.spend}</td>
-                  <td>{item.revenue}</td>
-                  <td>{item.impressions}</td>
-                  <td>{item.clicks}</td>
-                  <td>{item.id}</td>
-                </tr>
-              )
-            })}
-            </tbody>
-          </table>
-        </div>
-      );
-      */
     } else {
       return (
         <div>Uh oh, error retrieving data</div>
