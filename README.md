@@ -4,8 +4,8 @@ I have a config file where you can specify the date range and metrics to query o
 
 The proposed budgets were created using arbitrary scaling factors based on the Average ROAS (Return on Ad Spend) and the linear trend of the ROAS over the queried date range, as well as the average PPI (Profit Per Impression).  This methodology assumes there is unlimited budget.
 
-To run:
-`npm install`
+To run:  
+`npm install`  
 `npm start`
 
 Navigate to [http://localhost:3000](http://localhost:3000) in your internet browser.
