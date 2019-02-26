@@ -2,7 +2,6 @@ import React, { Component } from 'react';
 import axios from 'axios';
 import regression from 'regression';
 import './App.css';
-import { max } from 'moment';
 
 const config = require('./config.js').newInstance();
 const moment = require('moment');
@@ -48,6 +47,7 @@ class DataRow extends Component {
 }
 
 class DataTable extends Component {
+
   render() {
     const headers = [];
     const rows = [];
@@ -119,7 +119,7 @@ class SummaryTable extends Component {
         }
       }
       rows.push(
-        <tr>
+        <tr key={id} data-item={summaryData[id]} onClick={this.props.clickHandler.bind(this, id)}>
           <td>{id}</td>
           <td>{currBudget}</td>
           <td>{proposedBudget}</td>
@@ -132,6 +132,8 @@ class SummaryTable extends Component {
 
     return (
       <div>
+        <h2>Summary</h2>
+        <p class="instructions">Click on a row to view ad-specific daily data</p>
         <table>
           <thead>
             <tr>
@@ -154,7 +156,13 @@ class App extends Component {
 
   state = {
     adData: [],
-    adSummaries: []
+    adSummaries: [],
+    displayAdId: ''
+  }
+
+  constructor() {
+    super();
+    this.displayDetails = this.displayDetails.bind(this);
   }
 
   componentDidMount() {
@@ -202,6 +210,30 @@ class App extends Component {
     }
   }
 
+  displayDetails(adId) {
+    this.setState({displayAdId: adId});
+  }
+
+  showDailyData(adIdList) {
+    let dataObj = this.state.adData;
+
+    return (
+      <div>
+        {adIdList.map((adId) => {
+          return (
+            <div>
+              <h2>Details for {adId}</h2>
+              <DataTable 
+                adData={dataObj[adId]} 
+                dataKeys={ALL_KEYS} />
+            </div>
+          );
+        })}
+      </div>
+    );
+
+  }
+
   showAllData() {
     let dataObj = this.state.adData;
     if (Object.keys(dataObj).length > 0) {
@@ -211,16 +243,7 @@ class App extends Component {
             Detailed Data
           </header>
           <div>
-          {Object.keys(dataObj).map((adId) => {
-            return (
-              <div>
-                {adId}
-                <DataTable 
-                  adData={dataObj[adId]} 
-                  dataKeys={ALL_KEYS} />
-              </div>
-            );
-          })}
+          {this.showDailyData(Object.keys(dataObj))}
           </div>
         </div>
       );
@@ -232,6 +255,13 @@ class App extends Component {
   }
 
   render() {
+
+    let test = '';
+
+    if (this.state.displayAdId) {
+      test = this.showDailyData([this.state.displayAdId]);
+    }
+
     let dataObj = this.state.adData;
     if (Object.keys(dataObj).length > 0 && Object.keys(this.state.adSummaries).length > 0) {
       return (
@@ -239,13 +269,16 @@ class App extends Component {
           <header className="App-header">
             Erin's Shareably Data Analyzer
           </header>
-          <div>
+          <div class="wrapper-div">
+            <div class="left-div">
             <SummaryTable 
               adData={dataObj} 
-              summaryData={this.state.adSummaries} />
-          </div>
-          <div>
-            {this.showAllData()}
+              summaryData={this.state.adSummaries}
+              clickHandler={this.displayDetails.bind(this)} />
+            </div>
+            <div class="right-div">
+              {test}
+            </div>
           </div>
         </div>
       );
