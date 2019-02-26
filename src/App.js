@@ -2,6 +2,7 @@ import React, { Component } from 'react';
 import axios from 'axios';
 import regression from 'regression';
 import './App.css';
+import { max } from 'moment';
 
 const config = require('./config.js').newInstance();
 const moment = require('moment');
@@ -9,11 +10,13 @@ const querystring = require('querystring');
 const SHAREABLY_API_SERVER_URL = 'http://api.shareably.net:3030';
 
 const BUDGET_KEY = 'budget';
+const PROPOSED_BUDGET_KEY = 'proposedBudget';
 const SPEND_KEY = 'spend';
 const REVENUE_KEY = 'revenue';
 const IMPRESSIONS_KEY = 'impressions';
 const ROAS_KEY = 'ROAS'; // Return on Ad Spend
 const PPI_KEY = 'PPI'; // Profit Per Impression
+const AVERAGE_PPI_KEY = 'averagePPI';
 const AVERAGE_ROAS_KEY = 'averageROAS';
 const REGRESSION_KEY = 'regression';
 const ALL_KEYS = config.metrics.concat([ROAS_KEY, PPI_KEY]);
@@ -95,9 +98,15 @@ class SummaryTable extends Component {
       let currBudget = 'unknown';
       let avgROAS = 'unknown';
       let regressionROAS = 'unknown';
+      let proposedBudget = '?';
+      let avgPPI = 'unknown';
+
       if (summaryData[id]) {
         if (BUDGET_KEY in summaryData[id]) {
           currBudget = summaryData[id][BUDGET_KEY];
+        }
+        if (PROPOSED_BUDGET_KEY in summaryData[id]) {
+          proposedBudget = summaryData[id][PROPOSED_BUDGET_KEY].toFixed(3);
         }
         if (AVERAGE_ROAS_KEY in summaryData[id]) {
           avgROAS = `${this.toPercent(summaryData[id][AVERAGE_ROAS_KEY])}%`;
@@ -105,14 +114,18 @@ class SummaryTable extends Component {
         if (REGRESSION_KEY in summaryData[id]) {
           regressionROAS = summaryData[id][REGRESSION_KEY].toFixed(3);
         }
+        if (AVERAGE_PPI_KEY in summaryData[id]) {
+          avgPPI = summaryData[id][AVERAGE_PPI_KEY].toFixed(3);
+        }
       }
       rows.push(
         <tr>
           <td>{id}</td>
           <td>{currBudget}</td>
-          <td>?</td>
+          <td>{proposedBudget}</td>
           <td>{avgROAS}</td>
           <td>{regressionROAS}</td>
+          <td>{avgPPI}</td>
         </tr>
       );
     });
@@ -127,6 +140,7 @@ class SummaryTable extends Component {
               <th>Proposed Budget</th>
               <th>Average ROAS</th>
               <th>ROAS Trend</th>
+              <th>Average PPI</th>
             </tr>
           </thead>
           <tbody>{rows}</tbody>
@@ -181,6 +195,7 @@ class App extends Component {
           this.getAdBudget(config.shareablyAccessToken, adId);
         });
       }
+      await this.calculateAveragePPI();
       await this.calculateRegression();
     }  catch (e) {
       console.log("Error", e);
@@ -259,16 +274,40 @@ class App extends Component {
   }
 
   calculateROAS(adData) {
-    return (adData[REVENUE_KEY] - adData[SPEND_KEY]) / adData[SPEND_KEY];
+    // I am calculating ROAS as gross revenue/cost
+    // Some websites say to calculate it as (revenue - cost) / cost, not sure which way is better
+    return adData[REVENUE_KEY] / adData[SPEND_KEY];
   }
 
   calculatePPI(adData) {
-    return (adData[REVENUE_KEY] - adData[SPEND_KEY]) / adData[IMPRESSIONS_KEY];
+    return 1000 * (adData[REVENUE_KEY] - adData[SPEND_KEY]) / adData[IMPRESSIONS_KEY];
   }
 
   calculateAverageROAS(ROAS_array) {
     const numericROAS = ROAS_array.filter(n => !isNaN(n));
     return numericROAS.reduce((a, b) => a + b) / numericROAS.length;
+  }
+
+  calculateAveragePPI() {
+    const adData = this.state.adData;
+
+    Object.keys(adData).forEach((adId) => {
+      const ad = adData[adId];
+      let PPI_array = [];
+
+      Object.values(ad).forEach((dayData) => {
+        const PPI = dayData[PPI_KEY];
+        if (!isNaN(PPI)) {
+          PPI_array.push(PPI);
+        }
+      });
+
+      let summaryData = this.state.adSummaries;
+      summaryData[adId][AVERAGE_PPI_KEY] = PPI_array.reduce((a,b) => a + b) / PPI_array.length;
+
+      this.setState({adSummaries: summaryData});
+    });
+
   }
 
   calculateRegression() {
@@ -292,11 +331,45 @@ class App extends Component {
 
       const result = regression.linear(dataArray);
       let summaryData = this.state.adSummaries;
-      summaryData[adId][REGRESSION_KEY] = result.equation[0]; // Gradient is at index 0
-      summaryData[adId][AVERAGE_ROAS_KEY] = this.calculateAverageROAS(ROAS_array);
+
+      const regressionTrend = result.equation[0]; // Gradient is at index 0
+      const avgROAS = this.calculateAverageROAS(ROAS_array);
+      summaryData[adId][REGRESSION_KEY] = regressionTrend;
+      summaryData[adId][AVERAGE_ROAS_KEY] = avgROAS;
+      summaryData[adId][PROPOSED_BUDGET_KEY] = this.proposeBudget(avgROAS, regressionTrend, summaryData[adId][AVERAGE_PPI_KEY], summaryData[adId][BUDGET_KEY]);
 
       this.setState({adSummaries: summaryData});
     });
+  }
+
+  proposeBudget(avgROAS, regressionROAS, avgPPI, currBudget) {
+    /**
+     * This assumes unlimited budget
+     * I am using arbitrary multipliers to determine the budget
+     * based on the average ROAS and ROAS trend, and the average PPI
+     * on the average PPI
+     */
+    let budgetChange = 0;
+
+    // If ROAS is less than or equal to 100% and the trend is level or declining, cut the entire budget
+    if (avgROAS <= 1 && regressionROAS <= 0) {
+      budgetChange -= currBudget;
+    }
+
+    // If ROAS is at least 100% and trend is level or increasing, add more
+    if (avgROAS > 1 && regressionROAS >=0) {
+      budgetChange += currBudget * avgROAS * 0.1; // Better ROAS are increased by more
+    }
+
+    // If ROAS is positive but trend is negative or
+    // If ROAS is negative but trend is increasing, make no changes
+
+
+    // Add or subtract based on average PPI
+    budgetChange += currBudget * avgPPI * 0.3;
+
+
+    return Math.max(0, currBudget + budgetChange);
   }
 
   saveAdMetrics(adData, dateStr, metricsList) {
