@@ -21,7 +21,7 @@ const REGRESSION_KEY = 'regression';
 const ALL_KEYS = config.metrics.concat([ROAS_KEY, PPI_KEY]);
 
 
-class DataRow extends Component {
+class DetailedDataRow extends Component {
   render() {
     const adData = this.props.adData;
     const dataKeys = this.props.dataKeys;
@@ -29,11 +29,12 @@ class DataRow extends Component {
     const rowData = [];
     dataKeys.forEach((key) => {
       let data = adData[key];
+      const uniqueKey = `${this.props.adId}-${key}`;
 
       if (isNaN(data) || data === parseInt(data, 10)) {
-        rowData.push(<td>{adData[key]}</td>);
+        rowData.push(<td key={uniqueKey}>{adData[key]}</td>);
       } else { // Show to 3 decimal places for numbers that are not integers
-        rowData.push(<td>{adData[key].toFixed(3)}</td>);
+        rowData.push(<td key={uniqueKey}>{adData[key].toFixed(3)}</td>);
       }
     });
 
@@ -46,23 +47,26 @@ class DataRow extends Component {
   }
 }
 
-class DataTable extends Component {
+class DetailedDataTable extends Component {
 
   render() {
     const headers = [];
     const rows = [];
+    const adId = this.props.adId;
     const adData = this.props.adData;
     const dataKeys = this.props.dataKeys;
 
     dataKeys.forEach((k) => {
       headers.push(
-        <th>{k}</th>
+        <th key={`th-${adData}-${k}`}>{k}</th>
       );
     });
 
     Object.keys(adData).forEach((date) => {
       rows.push(
-        <DataRow
+        <DetailedDataRow
+          key={`datarow-${adId}-${date}`}
+          adId={adId}
           adData={adData[date]} 
           date={date}
           dataKeys={dataKeys} />
@@ -89,6 +93,7 @@ class SummaryTable extends Component {
   toPercent(num) {
     return (num * 100).toFixed(3);
   }
+
   render() {
     const rows = [];
     const adData = this.props.adData;
@@ -133,7 +138,7 @@ class SummaryTable extends Component {
     return (
       <div>
         <h2>Summary</h2>
-        <p class="instructions">Click on a row to view ad-specific daily data</p>
+        <p className="instructions">Click on a row to view ad-specific daily data</p>
         <table>
           <thead>
             <tr>
@@ -166,27 +171,17 @@ class App extends Component {
   }
 
   componentDidMount() {
-    /*
-    const startDate = moment(config.startDate, 'YYYY-MM-DD');
-    const endDate = moment(config.endDate, 'YYYY-MM-DD');
-    let currentDate = startDate;
-
-    const metricsStr = config.metrics.join(',');
-
-    while (currentDate <= endDate) {
-      console.log(`processing ${currentDate}`);
-      this.populateData(config.shareablyAccessToken, currentDate.format('YYYY-MM-DD'), metricsStr);
-
-      currentDate = currentDate.add(1, 'days');
-    }
-    */
-   this.dateLoop();
-
+   this.populateAdData();
   }
   
-  async dateLoop() {
+  async populateAdData() {
+    /**
+     * Loops through the dates between the specified start and end date (in config)
+     * and sends GET requests to get the ad data.  After all ad data has been fetched for all dates,
+     * it sends GET requests to get the current budget for each ad and then does calculations for each
+     */
     try {
-      await this.populateAdData();
+      await this.dateLoop();
 
       let allAds = {};
       Object.values(this.state.adData).forEach((date) => {
@@ -196,7 +191,6 @@ class App extends Component {
           }
         });
       });
-      console.log(Object.keys(allAds));
 
       if (allAds) {
         Object.keys(allAds).forEach((adId) => {
@@ -221,9 +215,10 @@ class App extends Component {
       <div>
         {adIdList.map((adId) => {
           return (
-            <div>
+            <div key={`detaildiv-${adId}`}>
               <h2>Details for {adId}</h2>
-              <DataTable 
+              <DetailedDataTable 
+                adId={adId}
                 adData={dataObj[adId]} 
                 dataKeys={ALL_KEYS} />
             </div>
@@ -249,17 +244,17 @@ class App extends Component {
       );
     } else {
       return (
-        <div>Uh oh, error retrieving data</div>
+        <div>Error retrieving data</div>
       );
     }
   }
 
   render() {
 
-    let test = '';
+    let detailHtml = '';
 
     if (this.state.displayAdId) {
-      test = this.showDailyData([this.state.displayAdId]);
+      detailHtml = this.showDailyData([this.state.displayAdId]);
     }
 
     let dataObj = this.state.adData;
@@ -269,33 +264,32 @@ class App extends Component {
           <header className="App-header">
             Erin's Shareably Data Analyzer
           </header>
-          <div class="wrapper-div">
-            <div class="left-div">
+          <div className="wrapper-div">
+            <div className="left-div">
             <SummaryTable 
               adData={dataObj} 
               summaryData={this.state.adSummaries}
               clickHandler={this.displayDetails.bind(this)} />
             </div>
-            <div class="right-div">
-              {test}
+            <div className="right-div">
+              {detailHtml}
             </div>
           </div>
         </div>
       );
     } else {
       return (
-        <div>Uh oh, error retrieving data</div>
+        <div>Error retrieving app data</div>
       );
     }
   }
 
-  async populateAdData() {
+  async dateLoop() {
     const startDate = moment(config.startDate, 'YYYY-MM-DD');
     const endDate = moment(config.endDate, 'YYYY-MM-DD');
     let currentDate = startDate;
 
     while (currentDate <= endDate) {
-      console.log(`processing ${currentDate}`);
       try {
         await this.getAdInsightData(config.shareablyAccessToken, currentDate.format('YYYY-MM-DD'), config.metrics);
       } catch (e) {
@@ -318,6 +312,13 @@ class App extends Component {
 
   calculateAverageROAS(ROAS_array) {
     const numericROAS = ROAS_array.filter(n => !isNaN(n));
+
+    if (numericROAS.length === 0) {
+      return null;
+    } else if (numericROAS.length === 1) {
+      return numericROAS[0];
+    }
+
     return numericROAS.reduce((a, b) => a + b) / numericROAS.length;
   }
 
@@ -336,14 +337,27 @@ class App extends Component {
       });
 
       let summaryData = this.state.adSummaries;
-      summaryData[adId][AVERAGE_PPI_KEY] = PPI_array.reduce((a,b) => a + b) / PPI_array.length;
 
-      this.setState({adSummaries: summaryData});
+      if (PPI_array.length > 0) {
+        summaryData[adId] = summaryData[adId] || {};
+
+        if (PPI_array.length === 1) {
+          summaryData[adId][AVERAGE_PPI_KEY] = PPI_array[0];
+        } else { // Find average
+          summaryData[adId][AVERAGE_PPI_KEY] = PPI_array.reduce((a,b) => a + b) / PPI_array.length;
+
+          this.setState({adSummaries: summaryData});
+        }
+      }
     });
 
   }
 
   calculateRegression() {
+    /**
+     * Finds the linear regression of the ROAS values across all dates for each ad.
+     * Also finds and stores the average ROAS.
+     */
     const adData = this.state.adData;
 
     Object.keys(adData).forEach((adId) => {
@@ -363,10 +377,11 @@ class App extends Component {
       });
 
       const result = regression.linear(dataArray);
-      let summaryData = this.state.adSummaries;
+      let summaryData = this.state.adSummaries || {};
 
       const regressionTrend = result.equation[0]; // Gradient is at index 0
       const avgROAS = this.calculateAverageROAS(ROAS_array);
+      summaryData[adId] = summaryData[adId] || {};
       summaryData[adId][REGRESSION_KEY] = regressionTrend;
       summaryData[adId][AVERAGE_ROAS_KEY] = avgROAS;
       summaryData[adId][PROPOSED_BUDGET_KEY] = this.proposeBudget(avgROAS, regressionTrend, summaryData[adId][AVERAGE_PPI_KEY], summaryData[adId][BUDGET_KEY]);
@@ -394,8 +409,8 @@ class App extends Component {
       budgetChange += currBudget * avgROAS * 0.1; // Better ROAS are increased by more
     }
 
-    // If ROAS is positive but trend is negative or
-    // If ROAS is negative but trend is increasing, make no changes
+    // Note: If ROAS is positive but trend is negative or
+    // If ROAS is negative but trend is increasing, make no changes because it might get better
 
 
     // Add or subtract based on average PPI
@@ -409,6 +424,7 @@ class App extends Component {
     /**
      * Saving ad data in this.state.adData in the format
      * adData[adId][date][metricName]
+     * Calculating ROAS and PPI and storing those metrics too
      */
     const currAdData = this.state.adData;
 
@@ -423,10 +439,7 @@ class App extends Component {
       currAdData[id][dateStr][PPI_KEY] = this.calculatePPI(ad);
     });
 
-    this.setState({adData: currAdData}, () => {
-      console.log(this.state.adData);
-    });
-
+    this.setState({adData: currAdData});
   }
 
   async getAdInsightData(token, dateStr, metricsList) {
@@ -457,7 +470,7 @@ class App extends Component {
     }
   }
 
-  getAdBudget(token, adId) {
+  async getAdBudget(token, adId) {
     /**
      * Saving budgets in this.state.adSummaries in the format
      * adSummaries[adId]['budget']
@@ -469,15 +482,12 @@ class App extends Component {
 
     const queryStr = querystring.stringify(params);
 
-    axios.get(`${baseUrl}/${adId}/?${queryStr}`)
+    await axios.get(`${baseUrl}/${adId}/?${queryStr}`)
     .then(res => {
       const currAdBudgets = this.state.adSummaries || {};
       currAdBudgets[adId] = currAdBudgets[adId] || {};
       currAdBudgets[adId][BUDGET_KEY] = res.data.budget;
-      this.setState({adSummaries: currAdBudgets}, () => {
-        console.log(this.state.adBudgets);
-      });
-      console.log(res);
+      this.setState({adSummaries: currAdBudgets});
     });
   }
 }

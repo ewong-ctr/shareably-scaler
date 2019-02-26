@@ -1,3 +1,22 @@
+# Instructions
+This is my first React App.  
+I have a config file where you can specify the date range and metrics to query on, but the calculations I used to create a proposed budget depends on *spend*, *revenue*, and *impressions* (*clicks* is optional since it's not used in the calculations).
+
+The proposed budgets were created using arbitrary scaling factors based on the Average ROAS (Return on Ad Spend) and the linear trend of the ROAS over the queried date range, as well as the average PPI (Profit Per Impression).  This methodology assumes there is unlimited budget.
+
+To run:
+`npm install`
+`npm start`
+
+Navigate to [http://localhost:3000](http://localhost:3000) in your internet browser.
+
+When you click on a row of data, a details table appears on the righthand side, which shows all the data retrieved across the date range for that particular ad.
+
+## Known Bugs
+* Not working on a date range of 1 day (i.e. startDate==endDate)
+
+
+# Default Create-React-App Documentation
 This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
 
 ## Available Scripts
